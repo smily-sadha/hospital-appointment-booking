@@ -1,0 +1,52 @@
+# =========================
+# Core
+# =========================
+python-dotenv==1.0.0
+requests==2.31.0
+numpy==1.24.3
+
+# =========================
+# Async / Networking
+# =========================
+aiohttp==3.13.3
+aiofiles==25.1.0
+anyio==4.12.1
+async-timeout==5.0.1
+websockets>=11.0,<17.0
+
+# =========================
+# Voice / Audio
+# =========================
+deepgram-sdk==3.2.4
+sounddevice==0.4.6
+
+# =========================
+# HTTP stack (required by SDKs)
+# =========================
+httpx==0.28.1
+httpcore==1.0.9
+urllib3==2.6.3
+certifi==2026.1.4
+charset-normalizer==3.4.4
+idna==3.11
+
+# =========================
+# Utilities
+# =========================
+attrs==25.4.0
+frozenlist==1.8.0
+multidict==6.7.1
+yarl==1.22.0
+typing_extensions==4.15.0
+
+# =========================
+# Parsing / Data
+# =========================
+dataclasses-json==0.6.7
+marshmallow==3.26.2
+typing-inspect==0.9.0
+
+# =========================
+# Testing (optional)
+# =========================
+pytest==7.4.0

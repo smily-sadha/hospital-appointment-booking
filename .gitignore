@@ -1,0 +1,19 @@
+# Virtual environments
+venv/
+.env/
+.env.example
+# Secrets
+.env
+*.key
+*.pem
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
