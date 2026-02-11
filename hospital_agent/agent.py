@@ -1,166 +1,172 @@
 """
 Hospital Appointment Booking Agent
-Name-only patient identification
+Final wording fix: availability stated before asking date
 """
 
 from hospital_agent.state import ConversationState
 from hospital_agent.intent import (
-    is_yes,
-    is_no,
     is_booking,
-    is_reschedule,
-    is_cancel,
-    extract_patient_name,
+    is_yes,
     extract_department,
+    extract_doctor_name,
     extract_date,
     extract_slot,
+    extract_patient_name,
 )
 from hospital_agent.availability import get_doctors, get_available_slots
-from hospital_agent.storage import (
-    save_appointment,
-    find_appointment_by_name,
-    update_appointment,
-    generate_appointment_id,
-)
-
+from hospital_agent.storage import save_appointment, generate_appointment_id
 
 
 class HospitalAppointmentAgent:
     def __init__(self, memory):
         self.memory = memory
-        self.state = ConversationState.OPENING
+        self.state = ConversationState.INTENT_SELECTION
         self.context = {}
 
-    # --------------------------------------------------
+    # ==================================================
+    # ENTRY
+    # ==================================================
 
     def handle_input(self, user_text: str) -> str:
         text = user_text.lower().strip()
         self.memory.add_message("user", user_text)
+        if "fee" in text or "fees" in text or "consultation" in text:
+                doctor = self._resolve_doctor(text)
+                if doctor:
+                    return f"The consultation fee for {doctor['name']} is {doctor['fee']} rupees."
+                return "I couldn't find that doctor in our records."
 
-        if self.state == ConversationState.OPENING:
-            response = self._opening()
+        if self.state == ConversationState.INTENT_SELECTION:
+            return self._intent_selection(text)
 
-        elif self.state == ConversationState.INTENT_SELECTION:
-            response = self._intent_selection(text)
+        if self.state == ConversationState.COLLECT_DEPARTMENT:
+            return self._collect_department(text)
 
-        elif self.state == ConversationState.COLLECT_PATIENT_NAME:
-            response = self._collect_patient_name(text)
+        if self.state == ConversationState.SELECT_DOCTOR:
+            return self._select_doctor(text)
 
-        elif self.state == ConversationState.COLLECT_DEPARTMENT:
-            response = self._collect_department(text)
+        if self.state == ConversationState.CONFIRM_APPOINTMENT:
+            return self._confirm_after_experience(text)
 
-        elif self.state == ConversationState.SELECT_DOCTOR_PREFERENCE:
-            response = self._select_doctor_preference(text)
+        if self.state == ConversationState.COLLECT_DATE:
+            return self._collect_date(text)
 
-        elif self.state == ConversationState.COLLECT_DATE:
-            response = self._collect_date(text)
+        if self.state == ConversationState.OFFER_SLOTS:
+            return self._offer_slots(text)
 
-        elif self.state == ConversationState.OFFER_SLOTS:
-            response = self._offer_slots(text)
+        if self.state == ConversationState.COLLECT_PATIENT_NAME:
+            return self._collect_patient_name(text)
 
-        elif self.state == ConversationState.CONFIRM_DETAILS:
-            response = self._confirm_booking(text)
+        return self._close()
 
-        elif self.state == ConversationState.RESCHEDULE_CONFIRM:
-            response = self._reschedule_confirm(text)
-
-        elif self.state == ConversationState.CANCEL_CONFIRM:
-            response = self._cancel_confirm(text)
-
-        else:
-            response = self._close()
-
-        self.memory.add_message("agent", response)
-        return response
-
-    # --------------------------------------------------
-
-    def _opening(self):
-        self.state = ConversationState.INTENT_SELECTION
-        return (
-            "Hello, this is the hospital appointment desk. "
-            "Would you like to book, reschedule, or cancel an appointment?"
-        )
+    # ==================================================
+    # INTENT
+    # ==================================================
 
     def _intent_selection(self, text):
-        if is_booking(text) or is_reschedule(text) or is_cancel(text):
-            self.context["intent"] = text
-            self.state = ConversationState.COLLECT_PATIENT_NAME
-            return "Sure. May I have the patient name, please?"
+        if is_booking(text):
+            dept = extract_department(text)
+            if dept:
+                self.context["department"] = dept
+                return self._department_availability()
 
-        return "Please tell me if you want to book, reschedule, or cancel an appointment."
+            self.state = ConversationState.COLLECT_DEPARTMENT
+            return "Which department would you like to consult?"
 
-    # ---------------- NAME ----------------
+        return "How may I help you with your appointment today?"
 
-    def _collect_patient_name(self, text):
-        name = extract_patient_name(text)
-        if not name:
-            return "Sorry, I didn’t catch the name. Could you please repeat it?"
-
-        self.context["patient_name"] = name
-
-        if is_reschedule(self.context["intent"]):
-            self.state = ConversationState.RESCHEDULE_CONFIRM
-            return f"Thanks {name}. Would you like to reschedule the appointment?"
-
-        if is_cancel(self.context["intent"]):
-            self.state = ConversationState.CANCEL_CONFIRM
-            return f"Thanks {name}. Would you like to cancel the appointment?"
-
-        self.state = ConversationState.COLLECT_DEPARTMENT
-        return f"Thanks {name}. Which department would you like to consult?"
-
-    # ---------------- BOOKING FLOW ----------------
+    # ==================================================
+    # DEPARTMENT
+    # ==================================================
 
     def _collect_department(self, text):
         dept = extract_department(text)
         if not dept:
-            return "Please tell me the department."
+            return "Please tell me the department name."
 
         self.context["department"] = dept
-        self.context["doctors"] = get_doctors(dept)
-        self.state = ConversationState.SELECT_DOCTOR_PREFERENCE
+        return self._department_availability()
 
+    def _department_availability(self):
+        doctors = get_doctors(self.context["department"])
+        self.context["doctors"] = doctors
+        self.state = ConversationState.SELECT_DOCTOR
+
+        names = ", ".join(d["name"] for d in doctors)
         return (
-            "Do you have a preference for a senior doctor, "
-            "a lower consultation fee, or a specific doctor?"
+            "let me look the Available doctors in this department are "
+            f"{names}. "
+            "Do you have a preferred doctor?"
         )
 
-    def _select_doctor_preference(self, text):
+    # ==================================================
+    # DOCTOR
+    # ==================================================
+
+    def _select_doctor(self, text):
         doctors = self.context["doctors"]
 
-        for d in doctors:
-            if d["name"].lower().replace(".", "") in text.replace(".", ""):
-                self.context["doctor"] = d
-                self.state = ConversationState.COLLECT_DATE
-                return f"When would you like to visit {d['name']}?"
+        # Explicit doctor
+        name = extract_doctor_name(text, doctors)
+        if name:
+            doctor = next(d for d in doctors if d["name"] == name)
+            self.context["doctor"] = doctor
+            self.state = ConversationState.COLLECT_DATE
 
-        selected = max(doctors, key=lambda d: d["experience"])
-        self.context["doctor"] = selected
-        self.state = ConversationState.COLLECT_DATE
-        return (
-            f"I recommend {selected['name']}. "
-            f"When would you like to visit?"
-        )
+            return (
+                f"{doctor['name']} is available. "
+                "Do you have a specific date you would like to visit?"
+            )
+
+        # Senior doctor
+        if any(k in text for k in ["senior", "experienced", "most experienced", "best"]):
+            doctor = max(doctors, key=lambda d: d["experience"])
+            self.context["doctor"] = doctor
+            self.state = ConversationState.CONFIRM_APPOINTMENT
+
+            return (
+                f"{doctor['name']} has {doctor['experience']} years of experience "
+                "and is the most experienced doctor in this department. "
+                f"Would you like to book an appointment with {doctor['name']}?"
+            )
+
+        return "Please tell me the doctor’s name."
+
+    # ==================================================
+    # CONFIRM
+    # ==================================================
+
+    def _confirm_after_experience(self, text):
+        if is_yes(text):
+            self.state = ConversationState.COLLECT_DATE
+            d = self.context["doctor"]
+            return (
+                f"{d['name']} is available. "
+                "Do you have a specific date you would like to visit?"
+            )
+
+        self.state = ConversationState.SELECT_DOCTOR
+        return "Alright. Would you like to choose another doctor?"
+
+    # ==================================================
+    # DATE
+    # ==================================================
 
     def _collect_date(self, text):
         date = extract_date(text)
         if not date:
-            return "Please tell me the appointment date."
+            return "Please tell me the exact date you would like to visit."
 
         self.context["date"] = date
         slots = get_available_slots(self.context["doctor"])
-
-        if not slots:
-            self.state = ConversationState.SELECT_DOCTOR_PREFERENCE
-            return (
-                f"{self.context['doctor']['name']} is not available that day. "
-                "Would you like to choose another doctor?"
-            )
-
         self.context["slots"] = slots
         self.state = ConversationState.OFFER_SLOTS
+
         return f"Available slots on {date} are {', '.join(slots)}. Which one works?"
+
+    # ==================================================
+    # SLOT
+    # ==================================================
 
     def _offer_slots(self, text):
         slot = extract_slot(text, self.context["slots"])
@@ -168,92 +174,34 @@ class HospitalAppointmentAgent:
             return "Please select one of the available time slots."
 
         self.context["time"] = slot
-        self.state = ConversationState.CONFIRM_DETAILS
-        return self._summary()
+        self.state = ConversationState.COLLECT_PATIENT_NAME
+        return "May I have the patient’s full name to confirm the booking?"
 
-    def _confirm_booking(self, text):
-        if is_yes(text):
-            appointment = {
-                "appointment_id": generate_appointment_id(),
-                "patient_name": self.context["patient_name"],
-                "department": self.context["department"],
-                "doctor": self.context["doctor"]["name"],
-                "date": self.context["date"],
-                "time": self.context["time"],
-                "status": "CONFIRMED",
-            }
+    # ==================================================
+    # PATIENT
+    # ==================================================
 
-            save_appointment(appointment)
+    def _collect_patient_name(self, text):
+        name = extract_patient_name(text)
+        if not name:
+            return "Please repeat the patient’s full name."
 
-            self.state = ConversationState.CLOSE
-            return (
-                f"Thank you {self.context['patient_name']}. "
-                "Your appointment has been successfully booked. "
-                "We look forward to seeing you."
-            )
+        appt_id = generate_appointment_id()
+        save_appointment({
+            "appointment_id": appt_id,
+            "patient_name": name,
+            "doctor": self.context["doctor"]["name"],
+            "department": self.context["department"],
+            "date": self.context["date"],
+            "time": self.context["time"],
+            "status": "CONFIRMED",
+        })
 
-        if is_no(text):
-            self.state = ConversationState.COLLECT_DATE
-            return "Alright, let’s choose a different date."
-
-        return "Please confirm if the appointment details are correct."
-
-
-    # ---------------- RESCHEDULE ----------------
-
-    def _reschedule_confirm(self, text):
-        if is_yes(text):
-            appt = find_appointment_by_name(self.context["patient_name"])
-
-            if not appt:
-                self.state = ConversationState.CLOSE
-                return (
-                    "I couldn’t find an existing appointment under your name. "
-                    "Please contact the hospital desk directly."
-                )
-
-            self.context["existing_appointment"] = appt
-            self.state = ConversationState.COLLECT_DEPARTMENT
-            return "Sure. Let’s reschedule. Which department is the appointment with?"
-
-        self.state = ConversationState.CLOSE
-        return "No problem. Let us know if you need help later."
-
-
-    # ---------------- CANCEL ----------------
-
-    def _cancel_confirm(self, text):
-        if is_yes(text):
-            appt = find_appointment_by_name(self.context["patient_name"])
-
-            if not appt:
-                self.state = ConversationState.CLOSE
-                return (
-                    "I couldn’t find an appointment under your name. "
-                    "Please contact the hospital desk for assistance."
-                )
-
-            update_appointment(
-                appt["appointment_id"],
-                {"status": "CANCELLED"}
-            )
-
-            self.state = ConversationState.CLOSE
-            return f"Your appointment has been cancelled, {self.context['patient_name']}."
-
-        self.state = ConversationState.CLOSE
-        return "Alright. Your appointment remains unchanged."
-
-
-    # --------------------------------------------------
-
-    def _summary(self):
         return (
-            f"To confirm, {self.context['patient_name']}, your appointment with "
-            f"{self.context['doctor']['name']} from {self.context['department']} "
-            f"is scheduled on {self.context['date']} at {self.context['time']}. "
-            "Is that correct?"
+            f"Your appointment is confirmed. "
+            f"Your appointment ID is {appt_id}. "
+            "We look forward to seeing you."
         )
 
     def _close(self):
-        return "Thank you for calling. Have a good day."
+        return "Thank you for calling CityCare Hospital. Have a pleasant day."

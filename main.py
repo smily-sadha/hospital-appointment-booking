@@ -36,22 +36,11 @@ if not DEEPGRAM_API_KEY:
 
 class HospitalVoiceAgent:
     def __init__(self):
-        # ----------------------------
-        # Memory
-        # ----------------------------
         self.memory = ConversationMemory()
         self.memory.start_session("hospital_session_001")
 
-        # ----------------------------
-        # Core Agent
-        # ----------------------------
-        self.agent = HospitalAppointmentAgent(
-            memory=self.memory
-        )
+        self.agent = HospitalAppointmentAgent(memory=self.memory)
 
-        # ----------------------------
-        # Audio + STT + TTS
-        # ----------------------------
         self.recorder = SilenceRecorder(
             start_timeout_ms=5000,
             silence_threshold=350.0,
@@ -63,31 +52,57 @@ class HospitalVoiceAgent:
         self.tts = DeepgramTTS(DEEPGRAM_API_KEY)
         self.player = AudioPlayer(sample_rate=24000)
 
-        # ----------------------------
-        # Conversation control
-        # ----------------------------
         self.no_response_count = 0
 
     # --------------------------------------------------
 
     async def speak(self, text: str):
+        """
+        Speak text with precise sentence-level pauses
+        """
         print(f"\n🤖 AGENT: {text}")
+
+        lower = text.lower()
+        trigger = "let me check the availability"
+
+        if trigger in lower:
+            # Find the end of the sentence that contains the trigger
+            start = lower.find(trigger)
+            sentence_end = text.find(".", start)
+
+            if sentence_end != -1:
+                sentence_end += 1  # include the period
+
+                first_sentence = text[:sentence_end].strip()
+                remaining_text = text[sentence_end:].strip()
+
+                # 1️⃣ Speak the full acknowledgment sentence
+                audio = self.tts.synthesize(first_sentence)
+                self.player.play(audio)
+
+                # ⏱️ 1-second pause AFTER sentence completion
+                await asyncio.sleep(1)
+
+                # 2️⃣ Speak the remaining content (if any)
+                if remaining_text:
+                    audio = self.tts.synthesize(remaining_text)
+                    self.player.play(audio)
+
+                return
+
+        # Default behavior
         audio = self.tts.synthesize(text)
         self.player.play(audio)
 
     # --------------------------------------------------
 
     async def listen_and_transcribe(self) -> str:
-        """
-        Record user speech → STT → text
-        """
         print("🎙️ Listening for user speech...")
         audio_bytes = self.recorder.record()
 
         print("🧠 Transcribing user speech...")
-        transcript = self.stt.transcribe(audio_bytes)
+        transcript = self.stt.transcribe(audio_bytes).strip()
 
-        transcript = transcript.strip()
         if transcript:
             print(f"📝 STT RESULT: {transcript}")
         else:
@@ -102,7 +117,6 @@ class HospitalVoiceAgent:
         print("🏥 Hospital Appointment Booking Voice Agent")
         print("=" * 60)
 
-        # Agent starts the call
         await self.speak(
             "Hello, this is the hospital appointment desk. "
             "How may I help you today?"
@@ -111,9 +125,6 @@ class HospitalVoiceAgent:
         while True:
             user_text = await self.listen_and_transcribe()
 
-            # --------------------------------
-            # USER DID NOT SPEAK
-            # --------------------------------
             if not user_text:
                 self.no_response_count += 1
 
@@ -121,21 +132,10 @@ class HospitalVoiceAgent:
                     await self.speak("Hello, can you hear me?")
                     continue
 
-                if self.no_response_count == 2:
-                    await self.speak("No worries if now is not a good time.")
-                    continue
-
-                if self.no_response_count >= 3:
-                    await self.speak(
-                        "I will end this call for now. "
-                        "Please feel free to reach out again."
-                    )
-                    print("👋 Call ended due to no response.")
+                if self.no_response_count >= 2:
+                    print("👋 Call ended.")
                     break
 
-            # --------------------------------
-            # USER SPOKE
-            # --------------------------------
             self.no_response_count = 0
             print(f"\n👤 HUMAN: {user_text}")
 

@@ -1,0 +1,38 @@
+[
+  {
+    "appointment_id": "APT-20260210182031",
+    "patient_name": "Neha",
+    "doctor": "Dr. Kumar",
+    "department": "Cardiology",
+    "date": "2026-02-11",
+    "time": "9:00 AM",
+    "status": "CONFIRMED"
+  },
+  {
+    "appointment_id": "APT-20260210183219",
+    "patient_name": "Neha",
+    "doctor": "Dr. Kumar",
+    "department": "Cardiology",
+    "date": "2026-02-11",
+    "time": "9:00 AM",
+    "status": "CONFIRMED"
+  },
+  {
+    "appointment_id": "APT-20260210183755",
+    "patient_name": "Neha",
+    "doctor": "Dr. Kumar",
+    "department": "Cardiology",
+    "date": "2026-02-11",
+    "time": "10:30 AM",
+    "status": "CONFIRMED"
+  },
+  {
+    "appointment_id": "APT-20260210183811",
+    "patient_name": "Thank You.",
+    "doctor": "Dr. Kumar",
+    "department": "Cardiology",
+    "date": "2026-02-11",
+    "time": "10:30 AM",
+    "status": "CONFIRMED"
+  }
+]
